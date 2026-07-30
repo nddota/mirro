@@ -1,0 +1,849 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>ОКУЛЯР · голосовой фокус</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+  :root{
+    --bg: #07090a;
+    --panel: #0f1412;
+    --panel-line: #22302a;
+    --green: #6bffb8;
+    --green-dim: #2f5747;
+    --amber: #ff8a4a;
+    --red: #ff5a5a;
+    --text: #e7eae7;
+    --muted: #7c8b84;
+  }
+
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding:20px 16px 32px;
+    min-height:100%;
+  }
+
+  .mono{ font-family:'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .hidden{ display:none !important; }
+
+  .login-wrap{
+    width:100%;
+    max-width:400px;
+    margin-top:14vh;
+    border:1px solid var(--panel-line);
+    background:var(--panel);
+    border-radius:2px;
+    padding:26px 24px;
+  }
+  .login-wrap h1{
+    font-size:18px;
+    letter-spacing:0.14em;
+    text-transform:uppercase;
+    margin:0 0 4px;
+  }
+  .login-wrap h1 span{ color:var(--green); }
+  .login-wrap p.sub{
+    font-size:11px;
+    color:var(--muted);
+    letter-spacing:0.04em;
+    margin:0 0 22px;
+  }
+  .role-tabs{ display:flex; gap:6px; margin-bottom:16px; }
+  .role-tabs button{ flex:1; }
+  .role-tabs button.active{
+    background:var(--green); color:#04140c; border-color:var(--green); font-weight:700;
+  }
+  .login-field label{
+    display:block; font-size:10px; letter-spacing:0.1em; text-transform:uppercase;
+    color:var(--muted); margin-bottom:6px;
+  }
+  .login-field input{
+    width:100%; background:#0a0e0c; border:1px solid var(--panel-line); color:var(--text);
+    font-family:'JetBrains Mono', monospace; font-size:13px; padding:9px 10px;
+    border-radius:2px; outline:none;
+  }
+  .login-field input:focus{ border-color:var(--green-dim); }
+  .login-error{ font-size:11px; color:var(--red); margin-top:8px; min-height:14px; }
+  .login-submit{ margin-top:14px; width:100%; }
+  .login-submit:disabled{ opacity:.5; cursor:wait; }
+
+  header{
+    width:100%; max-width:760px; display:flex; align-items:baseline;
+    justify-content:space-between; margin-bottom:14px;
+  }
+  header h1{ font-size:20px; letter-spacing:0.14em; margin:0; font-weight:700; text-transform:uppercase; }
+  header h1 span{ color:var(--green); }
+  header .right{ display:flex; align-items:center; gap:10px; }
+  header .status{ font-size:11px; letter-spacing:0.08em; color:var(--muted); text-transform:uppercase; }
+  .role-badge{
+    font-size:10px; letter-spacing:0.08em; text-transform:uppercase; padding:3px 8px;
+    border-radius:2px; border:1px solid var(--green-dim); color:var(--green);
+  }
+  .role-badge.admin{ border-color:#5a3320; color:var(--amber); }
+  .logout-btn{ font-size:11px; padding:5px 9px; }
+
+  .stage{
+    position:relative; width:100%; max-width:760px; aspect-ratio:4/3; background:#000;
+    border:1px solid var(--panel-line); border-radius:2px; overflow:hidden;
+    box-shadow: 0 0 0 1px #000, 0 20px 60px -20px rgba(0,0,0,.8);
+  }
+  video{ display:none; }
+  canvas{ width:100%; height:100%; display:block; cursor:crosshair; }
+
+  .scanline{
+    position:absolute; inset:0; pointer-events:none;
+    background: repeating-linear-gradient(to bottom, rgba(107,255,184,0.035) 0px, rgba(107,255,184,0.035) 1px, transparent 1px, transparent 3px);
+    mix-blend-mode:overlay;
+  }
+  .vignette{ position:absolute; inset:0; pointer-events:none; box-shadow: inset 0 0 90px 20px rgba(0,0,0,0.55); }
+
+  .hud{ position:absolute; inset:0; pointer-events:none; padding:10px 12px; display:flex; flex-direction:column; justify-content:space-between; }
+  .hud-row{ display:flex; justify-content:space-between; align-items:flex-start; }
+  .hud-tag{
+    font-size:10px; letter-spacing:0.1em; color:var(--green); background:rgba(0,0,0,0.45);
+    border:1px solid var(--green-dim); padding:3px 7px; border-radius:2px; text-transform:uppercase;
+  }
+  .hud-tag.rec{ color:var(--amber); border-color:#5a3320; }
+  .hud-tag.rec .dot{
+    display:inline-block; width:6px; height:6px; border-radius:50%; background:var(--amber);
+    margin-right:5px; animation: pulse 1.1s ease-in-out infinite;
+  }
+  @keyframes pulse{ 0%,100%{opacity:1;} 50%{opacity:.25;} }
+
+  .transcript{
+    align-self:flex-start; font-size:12px; color:var(--text); background:rgba(0,0,0,0.55);
+    border:1px solid var(--panel-line); padding:6px 9px; border-radius:2px; max-width:80%; min-height:14px;
+  }
+  .transcript .cmd{ color:var(--green); }
+
+  .idle-msg{
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    text-align:center; color:var(--muted); font-size:13px; padding:0 40px; background:#000;
+  }
+  .idle-msg button{ margin-top:14px; }
+
+  .panel{
+    width:100%; max-width:760px; margin-top:14px; border:1px solid var(--panel-line);
+    background:var(--panel); border-radius:2px; padding:14px 16px;
+  }
+  .panel.admin-only{ border-color:#3a2a1c; }
+  .panel h2{
+    font-size:11px; letter-spacing:0.12em; text-transform:uppercase; color:var(--muted);
+    margin:0 0 10px; font-weight:500; display:flex; align-items:center; gap:7px;
+  }
+  .panel h2 .tag-admin{
+    font-size:9px; color:var(--amber); border:1px solid #5a3320; padding:1px 5px;
+    border-radius:2px; letter-spacing:0.08em;
+  }
+
+  .row{ display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px; align-items:center; }
+  .row:last-child{ margin-bottom:0; }
+
+  button{
+    font-family:inherit; font-size:12px; letter-spacing:0.03em; background:#141b18; color:var(--text);
+    border:1px solid var(--panel-line); padding:8px 12px; border-radius:2px; cursor:pointer;
+    transition: border-color .15s ease, color .15s ease, background .15s ease;
+  }
+  button:hover{ border-color:var(--green-dim); color:var(--green); }
+  button:active{ transform: translateY(1px); }
+  button.primary{ background:var(--green); color:#04140c; border-color:var(--green); font-weight:700; }
+  button.primary:hover{ color:#04140c; opacity:.9; }
+  button.calib.armed{ border-color:var(--amber); color:var(--amber); }
+  button:disabled{ opacity:.35; cursor:not-allowed; }
+
+  .legend{ font-size:11px; color:var(--muted); line-height:1.7; }
+  .legend .cmd{ color:var(--green); }
+  .legend .cmd::before{ content:'"'; }
+  .legend .cmd::after{ content:'"'; }
+
+  input[type=range]{ accent-color: var(--green); }
+
+  .coords{ font-size:11px; color:var(--muted); line-height:1.8; }
+  .coords b{ color:var(--text); }
+
+  .foot{ max-width:760px; width:100%; margin-top:12px; font-size:11px; color:var(--muted); line-height:1.6; }
+</style>
+</head>
+<body>
+
+<div class="login-wrap" id="loginWrap">
+  <h1>ОКУЛЯР<span>·</span>вход</h1>
+  <p class="sub mono">выберите уровень доступа</p>
+
+  <div class="role-tabs">
+    <button id="tabUser" class="active">Пользователь</button>
+    <button id="tabAdmin">Администратор</button>
+  </div>
+
+  <div id="userLoginBlock">
+    <p class="legend">Просмотр камеры, голосовые и ручные команды фокуса. Калибровка и настройки недоступны.</p>
+    <button class="primary login-submit" id="enterUserBtn">Войти как пользователь</button>
+  </div>
+
+  <div id="adminLoginBlock" class="hidden">
+    <div class="login-field">
+      <label>Пароль администратора</label>
+      <input type="password" id="adminPassInput" placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <div class="login-error mono" id="loginError"></div>
+    <button class="primary login-submit" id="enterAdminBtn">Войти как администратор</button>
+  </div>
+</div>
+
+<div id="app" class="hidden" style="width:100%; max-width:760px; display:flex; flex-direction:column; align-items:center;">
+
+  <header>
+    <h1>ОКУЛЯР<span>·</span>focus</h1>
+    <div class="right">
+      <span class="role-badge mono" id="roleBadge">пользователь</span>
+      <span class="status mono" id="statusText">ожидание камеры</span>
+      <button class="logout-btn" id="logoutBtn">Выйти</button>
+    </div>
+  </header>
+
+  <div class="stage" id="stage">
+    <video id="video" playsinline autoplay muted></video>
+    <canvas id="canvas"></canvas>
+    <canvas id="captureCanvas" style="display:none;"></canvas>
+    <div class="scanline"></div>
+    <div class="vignette"></div>
+
+    <div class="hud">
+      <div class="hud-row">
+        <div class="hud-tag rec" id="recTag" style="display:none;"><span class="dot"></span>слушаю</div>
+        <div class="hud-tag mono" id="zoomTag">×1.0</div>
+      </div>
+      <div class="transcript mono" id="transcript">скажите команду…</div>
+    </div>
+
+    <div class="idle-msg" id="idleMsg">
+      Нужен доступ к камере, чтобы начать.<br>
+      <button class="primary" id="startBtn">Включить камеру</button>
+    </div>
+  </div>
+
+  <div class="panel admin-only" id="calibPanel">
+    <h2>Калибровка <span class="tag-admin">admin</span></h2>
+    <div class="row">
+      <button id="calibLeft">Отметить левый глаз</button>
+      <button id="calibRight">Отметить правый глаз</button>
+      <span class="legend" id="calibHint" style="align-self:center;">кликните по кнопке, затем по глазу на изображении</span>
+    </div>
+  </div>
+
+  <div class="panel admin-only" id="adminSettingsPanel">
+    <h2>Настройки <span class="tag-admin">admin</span></h2>
+    <div class="row">
+      <label class="legend" style="min-width:120px;">Макс. увеличение</label>
+      <input type="range" id="maxZoomSlider" min="1.5" max="8" step="0.5" value="4.5">
+      <span class="mono" id="maxZoomVal" style="min-width:38px;">×4.5</span>
+    </div>
+    <div class="row">
+      <button id="resetCalibBtn">Сбросить калибровку на сервере</button>
+    </div>
+    <div class="row coords mono" id="coordsReadout">left: — · right: —</div>
+  </div>
+
+  <div class="panel">
+    <h2>Голос</h2>
+    <div class="row">
+      <button class="primary" id="micBtn" disabled>Включить голосовое управление</button>
+    </div>
+
+    <h2 style="margin-top:14px;">Вручную</h2>
+    <div class="row">
+      <button id="btnRight">Правый глаз</button>
+      <button id="btnLeft">Левый глаз</button>
+      <button id="btnWide">Общий план</button>
+      <button id="btnLess">Отдалить</button>
+    </div>
+
+    <h2 style="margin-top:14px;">Команды</h2>
+    <div class="legend">
+      <span class="cmd">увеличь правый глаз</span> / <span class="cmd">увеличь левый глаз</span> — фокус на откалиброванной точке<br>
+      <span class="cmd">общий план</span> / <span class="cmd">сброс</span> — вернуться к обычному кадру<br>
+      <span class="cmd">отдали</span> — немного уменьшить масштаб
+    </div>
+  </div>
+
+  <div class="panel" id="comparePanel">
+    <h2>Сравнение лица по дням</h2>
+    <div class="row">
+      <button class="primary" id="capturePhotoBtn">Сделать фото на сегодня</button>
+      <span class="legend mono" id="captureStatus"></span>
+    </div>
+    <div class="row">
+      <div style="display:flex; flex-direction:column; gap:4px;">
+        <label class="legend">Дата 1</label>
+        <select id="dateASelect" class="mono"></select>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:4px;">
+        <label class="legend">Дата 2</label>
+        <select id="dateBSelect" class="mono"></select>
+      </div>
+      <button id="compareBtn" style="align-self:flex-end;">Сравнить</button>
+    </div>
+    <div class="row mono" id="compareError" style="color:var(--red); font-size:11px;"></div>
+    <div id="compareResult" class="hidden">
+      <div class="row" style="align-items:flex-start;">
+        <div>
+          <div class="legend" style="margin-bottom:4px;">Дата 1</div>
+          <img id="faceAImg" style="width:140px; height:140px; object-fit:cover; border:1px solid var(--panel-line); border-radius:2px;">
+        </div>
+        <div>
+          <div class="legend" style="margin-bottom:4px;">Дата 2</div>
+          <img id="faceBImg" style="width:140px; height:140px; object-fit:cover; border:1px solid var(--panel-line); border-radius:2px;">
+        </div>
+        <div>
+          <div class="legend" style="margin-bottom:4px;">Карта отличий</div>
+          <img id="diffImg" style="width:140px; height:140px; object-fit:cover; border:1px solid var(--panel-line); border-radius:2px;">
+        </div>
+      </div>
+      <div class="row">
+        <span class="hud-tag mono" id="similarityTag">схожесть: —</span>
+      </div>
+      <div class="legend">Тёплые участки на карте отличий — места, где лицо между двумя датами изменилось сильнее всего.</div>
+    </div>
+  </div>
+
+  <div class="foot">
+    Изображение с камеры обрабатывается только в браузере и никуда не отправляется, кроме случаев, когда вы сами
+    нажимаете «Сделать фото на сегодня» — тогда кадр сохраняется на сервере для последующего сравнения. Роль
+    подтверждается сервером через подписанную httpOnly-сессию — пароль администратора нигде в коде страницы не
+    хранится. Точки калибровки сохраняет и отдаёт сервер: правки может вносить только администратор, но видят их
+    обе роли.
+  </div>
+</div>
+
+<script>
+/* ================= AUTH (talks to Flask backend) ================= */
+let currentRole = null;
+
+const loginWrap = document.getElementById('loginWrap');
+const appEl = document.getElementById('app');
+const tabUser = document.getElementById('tabUser');
+const tabAdmin = document.getElementById('tabAdmin');
+const userLoginBlock = document.getElementById('userLoginBlock');
+const adminLoginBlock = document.getElementById('adminLoginBlock');
+const adminPassInput = document.getElementById('adminPassInput');
+const loginError = document.getElementById('loginError');
+const roleBadge = document.getElementById('roleBadge');
+const logoutBtn = document.getElementById('logoutBtn');
+const enterUserBtn = document.getElementById('enterUserBtn');
+const enterAdminBtn = document.getElementById('enterAdminBtn');
+
+tabUser.addEventListener('click', ()=>{
+  tabUser.classList.add('active'); tabAdmin.classList.remove('active');
+  userLoginBlock.classList.remove('hidden'); adminLoginBlock.classList.add('hidden');
+  loginError.textContent = '';
+});
+tabAdmin.addEventListener('click', ()=>{
+  tabAdmin.classList.add('active'); tabUser.classList.remove('active');
+  adminLoginBlock.classList.remove('hidden'); userLoginBlock.classList.add('hidden');
+  loginError.textContent = '';
+});
+
+async function apiFetch(url, options={}){
+  const resp = await fetch(url, { credentials:'include', headers:{'Content-Type':'application/json'}, ...options });
+  return resp;
+}
+
+enterUserBtn.addEventListener('click', async ()=>{
+  enterUserBtn.disabled = true;
+  try{
+    const resp = await apiFetch('/api/login/user', { method:'POST' });
+    if(!resp.ok) throw new Error('login failed');
+    const data = await resp.json();
+    await enterApp(data.role);
+  }catch(e){
+    loginError.textContent = 'Не удалось войти, попробуйте ещё раз';
+  }finally{
+    enterUserBtn.disabled = false;
+  }
+});
+
+enterAdminBtn.addEventListener('click', async ()=>{
+  loginError.textContent = '';
+  enterAdminBtn.disabled = true;
+  try{
+    const resp = await apiFetch('/api/login/admin', {
+      method:'POST',
+      body: JSON.stringify({ password: adminPassInput.value }),
+    });
+    if(resp.status === 401){
+      loginError.textContent = 'Неверный пароль';
+      return;
+    }
+    if(resp.status === 429){
+      loginError.textContent = 'Слишком много попыток, подождите минуту';
+      return;
+    }
+    if(!resp.ok) throw new Error('login failed');
+    const data = await resp.json();
+    adminPassInput.value = '';
+    await enterApp(data.role);
+  }catch(e){
+    loginError.textContent = 'Не удалось войти, попробуйте ещё раз';
+  }finally{
+    enterAdminBtn.disabled = false;
+  }
+});
+adminPassInput.addEventListener('keydown', (e)=>{ if(e.key === 'Enter') enterAdminBtn.click(); });
+
+function applyRoleVisibility(){
+  const isAdmin = currentRole === 'admin';
+  document.querySelectorAll('.admin-only').forEach(el=> el.classList.toggle('hidden', !isAdmin));
+  roleBadge.textContent = isAdmin ? 'администратор' : 'пользователь';
+  roleBadge.classList.toggle('admin', isAdmin);
+}
+
+async function enterApp(role){
+  currentRole = role;
+  loginWrap.classList.add('hidden');
+  appEl.classList.remove('hidden');
+  applyRoleVisibility();
+  resizeCanvas();
+  await loadCalibration();
+  await loadPhotoDates();
+}
+
+logoutBtn.addEventListener('click', async ()=>{
+  if(listening && recognition){ listening = false; recognition.stop(); }
+  if(stream){ stream.getTracks().forEach(t=>t.stop()); stream = null; }
+  try{ await apiFetch('/api/logout', { method:'POST' }); }catch(e){}
+  currentRole = null;
+  appEl.classList.add('hidden');
+  loginWrap.classList.remove('hidden');
+  loginError.textContent = '';
+  idleMsg.classList.remove('hidden');
+  idleMsg.style.display = 'flex';
+  statusText.textContent = 'ожидание камеры';
+  micBtn.disabled = true;
+  micBtn.textContent = 'Включить голосовое управление';
+  recTag.style.display = 'none';
+});
+
+// Restore session on page load (httpOnly cookie persists across refresh)
+(async function restoreSession(){
+  try{
+    const resp = await apiFetch('/api/me');
+    const data = await resp.json();
+    if(data.role){ await enterApp(data.role); }
+  }catch(e){ /* not logged in — show login screen */ }
+})();
+
+/* ================= CAMERA / ZOOM APP ================= */
+const video = document.getElementById('video');
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const stage = document.getElementById('stage');
+const idleMsg = document.getElementById('idleMsg');
+const startBtn = document.getElementById('startBtn');
+const statusText = document.getElementById('statusText');
+const zoomTag = document.getElementById('zoomTag');
+const recTag = document.getElementById('recTag');
+const transcript = document.getElementById('transcript');
+const micBtn = document.getElementById('micBtn');
+const calibLeftBtn = document.getElementById('calibLeft');
+const calibRightBtn = document.getElementById('calibRight');
+const calibHint = document.getElementById('calibHint');
+const maxZoomSlider = document.getElementById('maxZoomSlider');
+const maxZoomVal = document.getElementById('maxZoomVal');
+const resetCalibBtn = document.getElementById('resetCalibBtn');
+const coordsReadout = document.getElementById('coordsReadout');
+
+let stream = null;
+let calibArm = null;
+let points = { left: null, right: null };
+
+let curZoom = 1, tgtZoom = 1;
+let curCenter = { x:0.5, y:0.5 }, tgtCenter = { x:0.5, y:0.5 };
+let MAX_ZOOM = 4.5;
+
+function setTranscript(text, cmd){
+  transcript.innerHTML = cmd ? `${text} <span class="cmd">→ ${cmd}</span>` : text;
+}
+
+function updateCoordsReadout(){
+  const fmt = p => p ? `${p.x.toFixed(2)}, ${p.y.toFixed(2)}` : '—';
+  coordsReadout.innerHTML = `left: <b>${fmt(points.left)}</b> · right: <b>${fmt(points.right)}</b>`;
+}
+
+async function loadCalibration(){
+  try{
+    const resp = await apiFetch('/api/calibration');
+    if(!resp.ok) return;
+    const data = await resp.json();
+    points = { left: data.left || null, right: data.right || null };
+    updateCoordsReadout();
+  }catch(e){ /* ignore */ }
+}
+
+async function saveCalibrationPoint(key, point){
+  try{
+    const resp = await apiFetch('/api/calibration', {
+      method:'POST',
+      body: JSON.stringify({ [key]: point }),
+    });
+    if(resp.status === 403){
+      calibHint.textContent = 'нет прав администратора для сохранения';
+    }
+  }catch(e){ /* ignore */ }
+}
+
+async function startCamera(){
+  try{
+    stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'user' }, audio:false });
+    video.srcObject = stream;
+    await video.play();
+    idleMsg.style.display = 'none';
+    statusText.textContent = 'камера активна';
+    micBtn.disabled = false;
+    resizeCanvas();
+    requestAnimationFrame(loop);
+  }catch(e){
+    statusText.textContent = 'доступ к камере отклонён';
+    idleMsg.innerHTML = 'Не удалось получить доступ к камере.<br><span class="mono" style="font-size:11px;">' + (e.message || e.name) + '</span>';
+  }
+}
+startBtn.addEventListener('click', startCamera);
+
+function resizeCanvas(){
+  const rect = stage.getBoundingClientRect();
+  if(!rect.width) return;
+  canvas.width = rect.width * devicePixelRatio;
+  canvas.height = rect.height * devicePixelRatio;
+}
+window.addEventListener('resize', resizeCanvas);
+
+function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
+
+function drawMarker(px, py, active){
+  ctx.save();
+  ctx.strokeStyle = active ? '#ff8a4a' : 'rgba(107,255,184,0.8)';
+  ctx.lineWidth = 2 * devicePixelRatio;
+  const s = 9 * devicePixelRatio;
+  ctx.beginPath();
+  ctx.moveTo(px - s, py); ctx.lineTo(px + s, py);
+  ctx.moveTo(px, py - s); ctx.lineTo(px, py + s);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(px, py, s * 1.6, 0, Math.PI*2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawBrackets(cx, cy, size){
+  ctx.save();
+  ctx.strokeStyle = '#6bffb8';
+  ctx.lineWidth = 2.5 * devicePixelRatio;
+  const half = size/2;
+  const arm = size * 0.22;
+  const corners = [
+    [cx-half, cy-half, 1, 1],
+    [cx+half, cy-half, -1, 1],
+    [cx-half, cy+half, 1, -1],
+    [cx+half, cy+half, -1, -1],
+  ];
+  corners.forEach(([x,y,dx,dy])=>{
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + arm*dx, y);
+    ctx.moveTo(x, y);
+    ctx.lineTo(x, y + arm*dy);
+    ctx.stroke();
+  });
+  ctx.restore();
+}
+
+function loop(){
+  if(video.readyState >= 2 && video.videoWidth && !appEl.classList.contains('hidden')){
+    curZoom += (tgtZoom - curZoom) * 0.12;
+    curCenter.x += (tgtCenter.x - curCenter.x) * 0.12;
+    curCenter.y += (tgtCenter.y - curCenter.y) * 0.12;
+
+    const sw = video.videoWidth, sh = video.videoHeight;
+    const cw = sw / curZoom, ch = sh / curZoom;
+    let cx = clamp(curCenter.x*sw - cw/2, 0, Math.max(0, sw-cw));
+    let cy = clamp(curCenter.y*sh - ch/2, 0, Math.max(0, sh-ch));
+
+    ctx.save();
+    ctx.translate(canvas.width, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(video, cx, cy, cw, ch, 0, 0, canvas.width, canvas.height);
+    ctx.restore();
+
+    if(currentRole === 'admin'){
+      ['left','right'].forEach(k=>{
+        const p = points[k];
+        if(!p) return;
+        const sx = p.x*sw, sy = p.y*sh;
+        if(sx < cx || sx > cx+cw || sy < cy || sy > cy+ch) return;
+        const nx = (sx - cx)/cw, ny = (sy - cy)/ch;
+        const screenX = canvas.width - nx*canvas.width;
+        const screenY = ny*canvas.height;
+        drawMarker(screenX, screenY, calibArm===k);
+      });
+    }
+
+    if(curZoom > 1.15){
+      const nx = (curCenter.x*sw - cx)/cw, ny = (curCenter.y*sh - cy)/ch;
+      const screenX = canvas.width - nx*canvas.width;
+      const screenY = ny*canvas.height;
+      drawBrackets(screenX, screenY, canvas.width*0.34);
+    }
+
+    zoomTag.textContent = '×' + curZoom.toFixed(1);
+  }
+  requestAnimationFrame(loop);
+}
+
+canvas.addEventListener('click', (e)=>{
+  if(currentRole !== 'admin' || !calibArm) return;
+  const rect = canvas.getBoundingClientRect();
+  const clickXpx = (e.clientX - rect.left) / rect.width * canvas.width;
+  const clickYpx = (e.clientY - rect.top) / rect.height * canvas.height;
+  const mirroredXpx = canvas.width - clickXpx;
+
+  const sw = video.videoWidth, sh = video.videoHeight;
+  const cw = sw / curZoom, ch = sh / curZoom;
+  let cx = clamp(curCenter.x*sw - cw/2, 0, Math.max(0, sw-cw));
+  let cy = clamp(curCenter.y*sh - ch/2, 0, Math.max(0, sh-ch));
+
+  const normX = (cx + (mirroredXpx/canvas.width)*cw) / sw;
+  const normY = (cy + (clickYpx/canvas.height)*ch) / sh;
+
+  const point = { x: clamp(normX,0,1), y: clamp(normY,0,1) };
+  points[calibArm] = point;
+  calibHint.textContent = `${calibArm === 'left' ? 'левый' : 'правый'} глаз откалиброван`;
+  saveCalibrationPoint(calibArm, point);
+  calibArm = null;
+  calibLeftBtn.classList.remove('armed');
+  calibRightBtn.classList.remove('armed');
+  updateCoordsReadout();
+});
+
+calibLeftBtn.addEventListener('click', ()=>{
+  calibArm = calibArm==='left' ? null : 'left';
+  calibLeftBtn.classList.toggle('armed', calibArm==='left');
+  calibRightBtn.classList.remove('armed');
+  calibHint.textContent = calibArm ? 'кликните по левому глазу на изображении' : 'кликните по кнопке, затем по глазу на изображении';
+});
+calibRightBtn.addEventListener('click', ()=>{
+  calibArm = calibArm==='right' ? null : 'right';
+  calibRightBtn.classList.toggle('armed', calibArm==='right');
+  calibLeftBtn.classList.remove('armed');
+  calibHint.textContent = calibArm ? 'кликните по правому глазу на изображении' : 'кликните по кнопке, затем по глазу на изображении';
+});
+
+resetCalibBtn.addEventListener('click', async ()=>{
+  try{
+    const resp = await apiFetch('/api/calibration/reset', { method:'POST' });
+    if(resp.status === 403){
+      calibHint.textContent = 'нет прав администратора';
+      return;
+    }
+    points = { left:null, right:null };
+    updateCoordsReadout();
+    calibHint.textContent = 'калибровка сброшена';
+  }catch(e){ /* ignore */ }
+});
+
+maxZoomSlider.addEventListener('input', ()=>{
+  MAX_ZOOM = parseFloat(maxZoomSlider.value);
+  maxZoomVal.textContent = '×' + MAX_ZOOM.toFixed(1);
+});
+
+function focusOn(key, label){
+  const p = points[key];
+  if(!p){
+    setTranscript('точка не откалибрована', `нужна калибровка (${label}) — доступно администратору`);
+    return;
+  }
+  tgtCenter = { x:p.x, y:p.y };
+  tgtZoom = MAX_ZOOM;
+}
+function goWide(){ tgtZoom = 1; tgtCenter = { x:0.5, y:0.5 }; }
+function zoomOutStep(){ tgtZoom = Math.max(1, tgtZoom - 1.2); }
+
+document.getElementById('btnRight').addEventListener('click', ()=>focusOn('right','правый глаз'));
+document.getElementById('btnLeft').addEventListener('click', ()=>focusOn('left','левый глаз'));
+document.getElementById('btnWide').addEventListener('click', goWide);
+document.getElementById('btnLess').addEventListener('click', zoomOutStep);
+
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+let recognition = null;
+let listening = false;
+
+function handlePhrase(text){
+  const t = text.toLowerCase();
+  let matched = null;
+
+  const hasRight = /(прав)/.test(t);
+  const hasLeft = /(лев)/.test(t);
+  const hasEye = /(глаз)/.test(t);
+  const wantsWide = /(общ|сброс|отмен|весь кадр|назад)/.test(t);
+  const wantsOut = /(отдал|уменьш)/.test(t);
+
+  if(hasEye && hasRight){ focusOn('right','правый глаз'); matched = 'фокус на правом глазу'; }
+  else if(hasEye && hasLeft){ focusOn('left','левый глаз'); matched = 'фокус на левом глазу'; }
+  else if(wantsWide){ goWide(); matched = 'общий план'; }
+  else if(wantsOut){ zoomOutStep(); matched = 'отдалить'; }
+
+  setTranscript('«' + text + '»', matched);
+}
+
+function initRecognition(){
+  recognition = new SpeechRecognition();
+  recognition.lang = 'ru-RU';
+  recognition.continuous = true;
+  recognition.interimResults = false;
+
+  recognition.onresult = (e)=>{
+    const last = e.results[e.results.length-1];
+    const text = last[0].transcript.trim();
+    handlePhrase(text);
+  };
+  recognition.onerror = (e)=>{ statusText.textContent = 'ошибка распознавания: ' + e.error; };
+  recognition.onend = ()=>{ if(listening){ recognition.start(); } };
+}
+
+micBtn.addEventListener('click', ()=>{
+  if(!SpeechRecognition){
+    setTranscript('Web Speech API недоступен в этом браузере — попробуйте Chrome', null);
+    return;
+  }
+  if(!recognition) initRecognition();
+
+  listening = !listening;
+  if(listening){
+    recognition.start();
+    micBtn.textContent = 'Остановить голосовое управление';
+    recTag.style.display = 'inline-flex';
+    statusText.textContent = 'слушаю команды';
+  }else{
+    recognition.stop();
+    micBtn.textContent = 'Включить голосовое управление';
+    recTag.style.display = 'none';
+    statusText.textContent = 'камера активна';
+  }
+});
+
+/* ================= PHOTO DIARY / FACE COMPARISON ================= */
+const captureCanvas = document.getElementById('captureCanvas');
+const capturePhotoBtn = document.getElementById('capturePhotoBtn');
+const captureStatus = document.getElementById('captureStatus');
+const dateASelect = document.getElementById('dateASelect');
+const dateBSelect = document.getElementById('dateBSelect');
+const compareBtn = document.getElementById('compareBtn');
+const compareError = document.getElementById('compareError');
+const compareResult = document.getElementById('compareResult');
+const faceAImg = document.getElementById('faceAImg');
+const faceBImg = document.getElementById('faceBImg');
+const diffImg = document.getElementById('diffImg');
+const similarityTag = document.getElementById('similarityTag');
+
+function todayISO(){
+  const d = new Date();
+  const local = new Date(d.getTime() - d.getTimezoneOffset()*60000);
+  return local.toISOString().slice(0,10);
+}
+
+async function loadPhotoDates(){
+  try{
+    const resp = await apiFetch('/api/photos');
+    if(!resp.ok) return;
+    const list = await resp.json(); // [{date, uploaded_at}, ...] newest first
+    const prevA = dateASelect.value, prevB = dateBSelect.value;
+    dateASelect.innerHTML = '';
+    dateBSelect.innerHTML = '';
+    list.forEach(item=>{
+      const optA = document.createElement('option'); optA.value = item.date; optA.textContent = item.date;
+      const optB = document.createElement('option'); optB.value = item.date; optB.textContent = item.date;
+      dateASelect.appendChild(optA);
+      dateBSelect.appendChild(optB);
+    });
+    if(list.length){
+      dateBSelect.value = list.includes && list.find(x=>x.date===prevB) ? prevB : list[0].date;
+      dateASelect.value = list.find(x=>x.date===prevA) ? prevA : (list[1] ? list[1].date : list[0].date);
+    }
+  }catch(e){ /* ignore */ }
+}
+
+capturePhotoBtn.addEventListener('click', async ()=>{
+  if(!video.videoWidth){
+    captureStatus.textContent = 'сначала включите камеру';
+    return;
+  }
+  captureCanvas.width = video.videoWidth;
+  captureCanvas.height = video.videoHeight;
+  const cctx = captureCanvas.getContext('2d');
+  cctx.drawImage(video, 0, 0, captureCanvas.width, captureCanvas.height); // без зеркалирования — как есть
+  const dataUrl = captureCanvas.toDataURL('image/jpeg', 0.85);
+
+  capturePhotoBtn.disabled = true;
+  captureStatus.textContent = 'сохраняю…';
+  try{
+    const resp = await apiFetch('/api/photos', {
+      method:'POST',
+      body: JSON.stringify({ date: todayISO(), image: dataUrl }),
+    });
+    if(!resp.ok){
+      const err = await resp.json().catch(()=>({}));
+      captureStatus.textContent = 'ошибка: ' + (err.error || resp.status);
+    }else{
+      captureStatus.textContent = 'сохранено на ' + todayISO();
+      await loadPhotoDates();
+    }
+  }catch(e){
+    captureStatus.textContent = 'не удалось сохранить';
+  }finally{
+    capturePhotoBtn.disabled = false;
+  }
+});
+
+compareBtn.addEventListener('click', async ()=>{
+  compareError.textContent = '';
+  compareResult.classList.add('hidden');
+  const dateA = dateASelect.value, dateB = dateBSelect.value;
+  if(!dateA || !dateB){
+    compareError.textContent = 'нужно как минимум две сохранённые даты';
+    return;
+  }
+  compareBtn.disabled = true;
+  compareBtn.textContent = 'Сравниваю…';
+  try{
+    const resp = await apiFetch('/api/compare', {
+      method:'POST',
+      body: JSON.stringify({ date_a: dateA, date_b: dateB }),
+    });
+    const data = await resp.json();
+    if(!resp.ok){
+      compareError.textContent = data.error || 'ошибка сравнения';
+      return;
+    }
+    faceAImg.src = data.face_a;
+    faceBImg.src = data.face_b;
+    diffImg.src = data.diff_overlay;
+    similarityTag.textContent = 'схожесть: ' + data.similarity + '%';
+    compareResult.classList.remove('hidden');
+  }catch(e){
+    compareError.textContent = 'не удалось выполнить сравнение';
+  }finally{
+    compareBtn.disabled = false;
+    compareBtn.textContent = 'Сравнить';
+  }
+});
+</script>
+
+</body>
+</html>
